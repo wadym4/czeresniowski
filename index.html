@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мій бюджет</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --inc:#15803d; --exp:#b91c1c; --line:#e5e7eb; --accent:#2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --card:#1b1f27; --text:#e5e7eb; --muted:#9ca3af; --inc:#4ade80; --exp:#f87171; --line:#2c323d; --accent:#60a5fa; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .totals { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .totals div span { display:block; color:var(--muted); font-size:13px; }
+  .totals b { font-size:20px; }
+  .inc { color:var(--inc); } .exp { color:var(--exp); }
+  form { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; }
+  input, select, button { font:inherit; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); }
+  button { background:var(--accent); color:#fff; border:none; cursor:pointer; }
+  button.link { background:none; color:var(--muted); padding:2px 6px; }
+  table { width:100%; border-collapse:collapse; }
+  td, th { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; }
+  td.num { text-align:right; white-space:nowrap; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .bar { height:8px; background:var(--exp); border-radius:4px; }
+  .muted { color:var(--muted); }
+  .dp { position:relative; }
+  .field { width:100%; text-align:left; background:var(--card); color:var(--text); border:1px solid var(--line); }
+  .cal { position:absolute; z-index:10; top:calc(100% + 4px); left:0; width:260px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:0 8px 24px rgba(0,0,0,.15); }
+  .cal .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .cal .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
+  .cal .grid span { font-size:12px; color:var(--muted); padding:4px 0; }
+  .cal .grid button { padding:6px 0; background:none; color:var(--text); border-radius:6px; }
+  .cal .grid button:hover { background:var(--line); }
+  .cal .grid button.sel { background:var(--accent); color:#fff; }
+  .cal .grid button.today { outline:1px solid var(--accent); }
+  .donutWrap { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+  .legend { display:flex; gap:16px; font-size:13px; color:var(--muted); margin-bottom:4px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; }
+  #trend text { fill:var(--muted); font-size:12px; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:16px; z-index:20; }
+  .modal[hidden] { display:none; }
+  .modal .box { width:100%; max-width:820px; max-height:90vh; display:flex; flex-direction:column; margin:0; }
+  .modal .scroll { overflow:auto; flex:1; margin-top:8px; }
+  .modal td select { padding:4px; }
+  .modal tr.skip td { opacity:.4; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Мій бюджет</h1>
+
+  <div class="card row" style="justify-content:space-between">
+    <button type="button" id="prevM">‹</button>
+    <b id="monthLabel"></b>
+    <button type="button" id="nextM">›</button>
+  </div>
+
+  <div class="card totals">
+    <div><span>Доходи</span><b class="inc" id="tInc">0</b></div>
+    <div><span>Витрати</span><b class="exp" id="tExp">0</b></div>
+    <div><span>Залишок</span><b id="tBal">0</b></div>
+  </div>
+
+  <div class="card">
+    <form id="form">
+      <select id="type"><option value="exp">Витрата</option><option value="inc">Дохід</option></select>
+      <input id="amount" type="number" step="0.01" min="0.01" placeholder="Сума" required>
+      <select id="category"></select>
+      <div class="dp">
+        <button type="button" id="dateBtn" class="field"></button>
+        <div id="cal" class="cal" hidden></div>
+      </div>
+      <input id="note" placeholder="Коментар">
+      <button>Додати</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Витрати за категоріями</h3>
+    <div class="donutWrap">
+      <svg id="donut" viewBox="0 0 120 120" width="160" height="160"></svg>
+      <div id="byCat" class="muted" style="flex:1;min-width:200px">Немає витрат</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Останні 6 місяців</h3>
+    <div class="legend"><span><i style="background:var(--inc)"></i>Доходи</span><span><i style="background:var(--exp)"></i>Витрати</span></div>
+    <svg id="trend" viewBox="0 0 600 220" width="100%"></svg>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Операції</h3>
+    <table><tbody id="list"></tbody></table>
+  </div>
+
+  <div class="card row">
+    <button type="button" id="bankBtn">Імпорт виписки з банку (CSV)</button>
+    <input type="file" id="bankFile" accept=".csv,.txt" hidden>
+    <button id="export">Експорт JSON</button>
+    <button type="button" id="importBtn">Імпорт JSON</button>
+    <input type="file" id="import" accept=".json" hidden>
+  </div>
+</main>
+
+<div id="modal" class="modal" hidden>
+  <div class="card box">
+    <h3 style="margin-top:0">Імпорт виписки</h3>
+    <p class="muted" id="bankInfo"></p>
+    <div class="row" id="mapping"></div>
+    <div class="scroll"><table><tbody id="preview"></tbody></table></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button type="button" class="link" id="bankCancel">Скасувати</button>
+      <button type="button" id="bankOk"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CATS = {
+  exp: ["Їжа", "Житло", "Транспорт", "Здоров'я", "Розваги", "Одяг", "Зв'язок", "Інше"],
+  inc: ["Зарплата", "Підробіток", "Подарунок", "Інше"]
+};
+const $ = id => document.getElementById(id);
+let tx = [];
+try { tx = JSON.parse(localStorage.getItem("budget.tx") || "[]"); } catch {}
+const save = () => { try { localStorage.setItem("budget.tx", JSON.stringify(tx)); } catch {} };
+
+const MONTHS = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
+const MONTHS_GEN = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
+const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
+const pad = n => String(n).padStart(2, "0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = iso(new Date());
+
+let selDate = today;          // дата нової операції
+let viewMonth = today.slice(0, 7); // місяць, який показуємо у звіті
+let calY, calM;               // місяць, відкритий у календарі
+
+function showDate() {
+  const [y, m, d] = selDate.split("-").map(Number);
+  $("dateBtn").textContent = `${d} ${MONTHS_GEN[m - 1]} ${y}`;
+}
+function drawCal() {
+  const first = new Date(calY, calM, 1);
+  const shift = (first.getDay() + 6) % 7; // тиждень починається з понеділка
+  const days = new Date(calY, calM + 1, 0).getDate();
+  let cells = DAYS.map(d => `<span>${d}</span>`).join("") + "<i></i>".repeat(shift);
+  for (let d = 1; d <= days; d++) {
+    const v = `${calY}-${pad(calM + 1)}-${pad(d)}`;
+    cells += `<button type="button" data-d="${v}" class="${v === selDate ? "sel" : ""} ${v === today ? "today" : ""}">${d}</button>`;
+  }
+  $("cal").innerHTML = `<div class="head"><button type="button" class="link" data-nav="-1">‹</button>
+    <b>${MONTHS[calM]} ${calY}</b><button type="button" class="link" data-nav="1">›</button></div>
+    <div class="grid">${cells}</div>`;
+}
+$("dateBtn").onclick = () => {
+  const c = $("cal");
+  if (c.hidden) { [calY, calM] = [+selDate.slice(0, 4), +selDate.slice(5, 7) - 1]; drawCal(); }
+  c.hidden = !c.hidden;
+};
+$("cal").onclick = e => {
+  const t = e.target;
+  if (t.dataset.nav) { calM += +t.dataset.nav; if (calM < 0) { calM = 11; calY--; } if (calM > 11) { calM = 0; calY++; } drawCal(); }
+  else if (t.dataset.d) { selDate = t.dataset.d; showDate(); $("cal").hidden = true; }
+};
+document.addEventListener("click", e => { if (!e.target.closest(".dp")) $("cal").hidden = true; });
+
+function moveMonth(step) {
+  let [y, m] = viewMonth.split("-").map(Number);
+  m += step; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+  viewMonth = `${y}-${pad(m)}`; render();
+}
+$("prevM").onclick = () => moveMonth(-1);
+$("nextM").onclick = () => moveMonth(1);
+
+function fillCats() {
+  $("category").innerHTML = CATS[$("type").value].map(c => `<option>${c}</option>`).join("");
+}
+const fmt = n => n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " zł";
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function render() {
+  const m = viewMonth;
+  $("monthLabel").textContent = `${MONTHS[+m.slice(5) - 1]} ${m.slice(0, 4)}`;
+  const items = tx.filter(t => t.date.startsWith(m)).sort((a, b) => b.date.localeCompare(a.date));
+  const inc = items.filter(t => t.type === "inc").reduce((s, t) => s + t.amount, 0);
+  const exp = items.filter(t => t.type === "exp").reduce((s, t) => s + t.amount, 0);
+  $("tInc").textContent = fmt(inc);
+  $("tExp").textContent = fmt(exp);
+  $("tBal").textContent = fmt(inc - exp);
+  $("tBal").className = inc - exp < 0 ? "exp" : "inc";
+
+  const byCat = {};
+  items.filter(t => t.type === "exp").forEach(t => byCat[t.category] = (byCat[t.category] || 0) + t.amount);
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  drawDonut(cats, exp);
+  $("byCat").innerHTML = cats.length ? cats.map(([c, v]) => `
+    <div class="row" style="justify-content:space-between;margin:6px 0">
+      <span><span class="dot" style="background:${catColor(c)}"></span>${c}</span>
+      <span>${fmt(v)} <span class="muted">${Math.round(v / exp * 100)}%</span></span></div>`).join("") : "Немає витрат";
+  drawTrend();
+
+  $("list").innerHTML = items.length ? items.map(t => `
+    <tr><td>${t.date.slice(8)}.${t.date.slice(5, 7)}</td><td style="white-space:nowrap"><span class="dot" style="background:${catColor(t.category)}"></span>${t.category}</td><td class="muted">${esc(t.note || "")}</td>
+    <td class="num ${t.type}">${t.type === "exp" ? "−" : "+"}${fmt(t.amount)}</td>
+    <td><button class="link" data-id="${t.id}" title="Видалити">✕</button></td></tr>`).join("")
+    : `<tr><td class="muted">Операцій за цей місяць немає</td></tr>`;
+}
+
+$("type").onchange = fillCats;
+$("form").onsubmit = e => {
+  e.preventDefault();
+  tx.push({ id: Date.now(), type: $("type").value, amount: +$("amount").value, category: $("category").value, date: selDate, note: $("note").value.trim() });
+  save(); $("amount").value = ""; $("note").value = ""; render();
+};
+$("list").onclick = e => {
+  const id = e.target.dataset.id;
+  if (id && confirm("Видалити операцію?")) { tx = tx.filter(t => t.id != id); save(); render(); }
+};
+$("export").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(tx, null, 2)], { type: "application/json" }));
+  a.download = "budget.json"; a.click();
+};
+$("importBtn").onclick = () => $("import").click();
+$("import").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { tx = JSON.parse(await f.text()); save(); render(); } catch { alert("Не вдалося прочитати файл"); }
+};
+
+// ---------- Графіки ----------
+const CAT_COLORS = { "Їжа": "#e8833a", "Житло": "#3b82f6", "Транспорт": "#14b8a6", "Здоров'я": "#ef4444",
+  "Розваги": "#a855f7", "Одяг": "#ec4899", "Зв'язок": "#eab308", "Інше": "#94a3b8" };
+const catColor = c => CAT_COLORS[c] || "#94a3b8";
+
+function drawDonut(cats, total) {
+  const r = 46, C = 2 * Math.PI * r;
+  let off = 0, arcs = "";
+  for (const [c, v] of cats) {
+    const len = v / total * C;
+    arcs += `<circle cx="60" cy="60" r="${r}" fill="none" stroke="${catColor(c)}" stroke-width="18"
+      stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 60 60)"><title>${c}: ${fmt(v)}</title></circle>`;
+    off += len;
+  }
+  if (!cats.length) arcs = `<circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--line)" stroke-width="18"/>`;
+  $("donut").innerHTML = arcs + `<text x="60" y="64" text-anchor="middle" font-size="11" font-weight="600" fill="currentColor">${cats.length ? Math.round(total).toLocaleString("pl-PL") + " zł" : ""}</text>`;
+}
+
+function drawTrend() {
+  const [vy, vm] = viewMonth.split("-").map(Number);
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(vy, vm - 1 - i, 1);
+    const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+    const its = tx.filter(t => t.date.startsWith(key));
+    months.push({ label: MONTHS[d.getMonth()].slice(0, 3), key,
+      inc: its.filter(t => t.type === "inc").reduce((s, t) => s + t.amount, 0),
+      exp: its.filter(t => t.type === "exp").reduce((s, t) => s + t.amount, 0) });
+  }
+  const max = Math.max(1, ...months.map(m => Math.max(m.inc, m.exp)));
+  const W = 600, H = 220, top = 10, bottom = 24, left = 8, plotH = H - top - bottom;
+  const gw = (W - left * 2) / 6, bw = Math.min(32, gw / 3);
+  let svg = `<line x1="0" x2="${W}" y1="${H - bottom}" y2="${H - bottom}" stroke="var(--line)"/>`;
+  months.forEach((m, i) => {
+    const cx = left + gw * i + gw / 2;
+    const hi = m.inc / max * plotH, he = m.exp / max * plotH;
+    svg += `<rect x="${cx - bw - 2}" y="${H - bottom - hi}" width="${bw}" height="${hi}" rx="3" fill="var(--inc)"><title>${m.label}: доходи ${fmt(m.inc)}</title></rect>
+      <rect x="${cx + 2}" y="${H - bottom - he}" width="${bw}" height="${he}" rx="3" fill="var(--exp)"><title>${m.label}: витрати ${fmt(m.exp)}</title></rect>
+      <text x="${cx}" y="${H - 6}" text-anchor="middle" ${m.key === viewMonth ? 'font-weight="700"' : ""}>${m.label}</text>`;
+  });
+  $("trend").innerHTML = svg;
+}
+
+// ---------- Імпорт банківської виписки (CSV) ----------
+const RULES = [
+  ["Їжа", /biedronka|lidl|żabka|zabka|auchan|carrefour|kaufland|netto|dino|stokrotka|lewiatan|aldi|intermarche|polomarket|frisco|mcdonald|kfc|burger|pizza|restaur|bistro|kebab|glovo|wolt|pyszne|uber ?eats|piekarnia|cukiernia|starbucks|costa/],
+  ["Транспорт", /orlen|\bbp\b|shell|circle ?k|moya|amic|uber(?! ?eats)|bolt|free ?now|pkp|intercity|koleje|mpk|ztm|jakdojade|skycash|flixbus|paliwo|parking|autostrad/],
+  ["Житло", /czynsz|najem|wynajem|wspólnota|spółdzielnia|tauron|pge|enea|energa|innogy|e\.on|pgnig|fortum|veolia|wodociąg|ikea|castorama|leroy|obi\b|jysk/],
+  ["Зв'язок", /orange|\bplay\b|p4 sp|plus\b|polkomtel|t-mobile|netia|upc|vectra|inea/],
+  ["Здоров'я", /apteka|doz\b|lekarz|medicover|lux ?med|enel-med|dentyst|stomatolog|klinika|przychodnia|rossmann|hebe|super-pharm/],
+  ["Розваги", /netflix|spotify|youtube|disney|hbo|max\.com|apple\.com|google play|steam|playstation|xbox|kino|cinema city|multikino|helios|teatr|bilet/],
+  ["Одяг", /zara|h&m|\bhm\b|reserved|cropp|house|mohito|sinsay|pepco|ccc\b|deichmann|zalando|answear|decathlon|primark|kik\b|tk ?maxx/],
+];
+const INC_RULES = [["Зарплата", /wynagrodzenie|pensja|wypłata|salary|payroll|зарплата/]];
+function guessCat(text, type) {
+  const t = text.toLowerCase();
+  for (const [c, re] of (type === "inc" ? INC_RULES : RULES)) if (re.test(t)) return c;
+  return "Інше";
+}
+
+function decode(buf) {
+  const utf = new TextDecoder("utf-8").decode(buf);
+  // польські банки часто віддають CSV у кодуванні Windows-1250
+  return (utf.includes("\uFFFD") ? new TextDecoder("windows-1250").decode(buf) : utf).replace(/^\uFEFF/, "");
+}
+function parseCSV(text) {
+  const first = text.split(/\r?\n/).slice(0, 30).join("\n");
+  const delim = [";", ",", "\t"].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(c => c.trim())).filter(r => r.some(c => c));
+}
+function parseAmount(s) {
+  if (!s) return NaN;
+  let v = s.replace(/[\s\u00a0]|PLN|zł/gi, "").replace(/[^\d,.\-+]/g, "");
+  if (v.includes(",") && v.includes(".")) v = v.lastIndexOf(",") > v.lastIndexOf(".") ? v.replace(/\./g, "").replace(",", ".") : v.replace(/,/g, "");
+  else v = v.replace(",", ".");
+  return v ? parseFloat(v) : NaN;
+}
+function parseDate(s) {
+  let m = (s || "").match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m = (s || "").match(/(\d{1,2})[-./](\d{1,2})[-./](\d{4})/);
+  if (m) return `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  return null;
+}
+
+const COLS = {
+  date: ["data operacji", "data transakcji", "data księgowania", "completed date", "started date", "data", "date", "дата"],
+  amount: ["kwota operacji", "kwota transakcji", "kwota", "amount", "сума"],
+  desc: ["opis operacji", "opis transakcji", "tytuł", "tytul", "opis", "nazwa odbiorcy", "odbiorca", "kontrahent", "description", "title", "призначення", "опис"],
+  currency: ["waluta", "currency", "валюта"],
+};
+const COL_NAMES = { date: "Дата", amount: "Сума", desc: "Опис", currency: "Валюта" };
+let bank = null; // { rows, header, map, cats }
+
+function findHeader(rows) {
+  for (let i = 0; i < Math.min(rows.length, 40); i++) {
+    const h = rows[i].map(c => c.toLowerCase().replace(/^#/, ""));
+    const pick = keys => { for (const k of keys) { const j = h.findIndex(c => c === k); if (j >= 0) return j; }
+                           for (const k of keys) { const j = h.findIndex(c => c.includes(k)); if (j >= 0) return j; } return -1; };
+    const map = { date: pick(COLS.date), amount: pick(COLS.amount), desc: pick(COLS.desc), currency: pick(COLS.currency) };
+    if (map.date >= 0 && map.amount >= 0) return { idx: i, map };
+  }
+  // без заголовка: шукаємо колонки за вмістом
+  const r = rows.find(r => r.some(parseDate) && r.some(c => /\d[,.]\d{2}$/.test(c))) || rows[0];
+  return { idx: -1, map: { date: r.findIndex(c => parseDate(c)), amount: r.findIndex(c => /^[-+]?[\d\s]+[,.]\d{2}/.test(c) && !parseDate(c)),
+    desc: r.findIndex(c => /[a-zа-яąćęłńóśźż]{4}/i.test(c)), currency: -1 } };
+}
+
+function bankRows() {
+  const { rows, start, map } = bank;
+  return rows.slice(start).map((r, i) => {
+    const amount = parseAmount(r[map.amount]), date = parseDate(r[map.date]);
+    const cur = map.currency >= 0 ? (r[map.currency] || "").toUpperCase() : "PLN";
+    // у PKO опис розбитий на кілька колонок без назви, тому склеюємо їх
+    let note = map.desc >= 0 ? r[map.desc] : "";
+    for (let j = map.desc + 1; map.desc >= 0 && j < r.length && !bank.header[j]; j++) if (r[j]) note += " · " + r[j];
+    const type = amount < 0 ? "exp" : "inc";
+    const dup = tx.some(t => t.date === date && Math.abs(t.amount - Math.abs(amount)) < 0.005 && t.note === note);
+    const reason = !date || isNaN(amount) || amount === 0 ? "не операція" : cur && cur !== "PLN" ? `валюта ${cur}` : dup ? "вже є" : "";
+    return { i, date, amount: Math.abs(amount), type, note, reason,
+      category: bank.cats[i] || guessCat(r.join(" "), type) };
+  });
+}
+
+function drawBank() {
+  const opts = (sel) => `<option value="-1">—</option>` + bank.header.map((h, j) => `<option value="${j}" ${j === sel ? "selected" : ""}>${esc(h || "Колонка " + (j + 1))}</option>`).join("");
+  $("mapping").innerHTML = Object.keys(COL_NAMES).map(k => `<label>${COL_NAMES[k]} <select data-map="${k}">${opts(bank.map[k])}</select></label>`).join("");
+  const list = bankRows(), ok = list.filter(r => !r.reason);
+  $("preview").innerHTML = list.map(r => `<tr class="${r.reason ? "skip" : ""}">
+    <td>${r.date ? r.date.split("-").reverse().join(".") : "—"}</td>
+    <td>${r.reason ? `<span class="muted">${r.reason}</span>` : `<select data-row="${r.i}">${CATS[r.type].map(c => `<option ${c === r.category ? "selected" : ""}>${c}</option>`).join("")}</select>`}</td>
+    <td class="muted">${esc(r.note || "").slice(0, 80)}</td>
+    <td class="num ${r.type}">${isNaN(r.amount) ? "" : (r.type === "exp" ? "−" : "+") + fmt(r.amount)}</td></tr>`).join("");
+  $("bankOk").textContent = `Імпортувати ${ok.length}`;
+  $("bankOk").disabled = !ok.length;
+}
+
+$("bankBtn").onclick = () => $("bankFile").click();
+$("bankFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const rows = parseCSV(decode(await f.arrayBuffer()));
+  if (!rows.length) return alert("Файл порожній або не схожий на CSV");
+  const { idx, map } = findHeader(rows);
+  const width = Math.max(...rows.map(r => r.length));
+  const header = idx >= 0 ? Array.from({ length: width }, (_, j) => (rows[idx][j] || "").replace(/^#/, "")) : Array.from({ length: width }, (_, j) => "Колонка " + (j + 1));
+  bank = { rows, start: idx + 1, header, map, cats: {} };
+  $("bankInfo").textContent = `Файл «${f.name}». Перевірте, чи правильно вибрані колонки, і за потреби змініть категорії.`;
+  drawBank();
+  $("modal").hidden = false;
+};
+$("mapping").onchange = e => { bank.map[e.target.dataset.map] = +e.target.value; bank.cats = {}; drawBank(); };
+$("preview").onchange = e => { bank.cats[e.target.dataset.row] = e.target.value; };
+$("bankCancel").onclick = () => { $("modal").hidden = true; bank = null; };
+$("bankOk").onclick = () => {
+  const ok = bankRows().filter(r => !r.reason);
+  let id = Date.now();
+  ok.forEach(r => tx.push({ id: id++, type: r.type, amount: r.amount, category: r.category, date: r.date, note: r.note }));
+  save(); $("modal").hidden = true; bank = null;
+  const last = ok.map(r => r.date).sort().pop();
+  if (last) viewMonth = last.slice(0, 7);
+  render();
+  alert(`Імпортовано операцій: ${ok.length}`);
+};
+
+fillCats();
+showDate();
+render();
+</script>
+</body>
+</html>
