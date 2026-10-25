@@ -21,6 +21,12 @@
 На сервері з Ubuntu або Debian, у папці репозиторію:
 
 ```bash
-sudo bash deploy/setup.sh            # сайт за IP-адресою
-sudo bash deploy/setup.sh my.domain  # з доменом і HTTPS
+sudo bash deploy/setup.sh            # адреса <ip>.sslip.io з HTTPS
+sudo bash deploy/setup.sh my.domain  # власний домен з HTTPS
 ```
+
+Скрипт встановлює nginx, сервер даних (`server/server.py`, лише стандартний Python) і сертифікат HTTPS. Під час першого запуску він попросить придумати пароль для входу на сайт. Після входу дані зберігаються на сервері в `/var/lib/czeresniowski` і однакові на всіх пристроях. Щодня зберігається резервна копія, останні 60 днів.
+
+Оновлення: `cd ~/czeresniowski && git pull && bash deploy/setup.sh`
+
+Змінити пароль: `sudo -u czeres DATA_DIR=/var/lib/czeresniowski python3 /opt/czeresniowski/server.py --set-password`

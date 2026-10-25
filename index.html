@@ -57,7 +57,11 @@
 </head>
 <body>
 <main>
-  <h1>Мій бюджет</h1>
+  <div class="row" style="justify-content:space-between">
+    <h1>Мій бюджет</h1>
+    <span class="row"><span id="syncState" class="muted" style="font-size:13px"></span>
+      <button type="button" class="link" id="logout" hidden>Вийти</button></span>
+  </div>
 
   <div class="card row" style="justify-content:space-between">
     <button type="button" id="prevM">‹</button>
@@ -116,6 +120,15 @@
   </div>
 </main>
 
+<div id="login" class="modal" hidden>
+  <form class="card box" id="loginForm" style="max-width:360px">
+    <h3 style="margin-top:0">Вхід</h3>
+    <input id="password" type="password" placeholder="Пароль" autocomplete="current-password" required>
+    <p class="exp" id="loginErr" style="min-height:1.2em;margin:8px 0"></p>
+    <button>Увійти</button>
+  </form>
+</div>
+
 <div id="drop" class="drop" hidden><div>Відпустіть файл, щоб імпортувати виписку</div></div>
 
 <div id="modal" class="modal" hidden>
@@ -140,7 +153,78 @@ const CATS = {
 const $ = id => document.getElementById(id);
 let tx = [];
 try { tx = JSON.parse(localStorage.getItem("budget.tx") || "[]"); } catch {}
-const save = () => { try { localStorage.setItem("budget.tx", JSON.stringify(tx)); } catch {} };
+// ---------- Збереження: у браузері та, якщо сайт працює на сервері, ще й на сервері ----------
+let server = false;   // true, коли дані синхронізуються з сервером
+let rev = 0;          // версія даних на сервері
+let synced = [];      // id операцій на момент останньої синхронізації
+let pushTimer = null;
+const ids = list => new Set(list.map(t => t.id));
+const setSync = text => { $("syncState").textContent = text; };
+
+function save() {
+  try { localStorage.setItem("budget.tx", JSON.stringify(tx)); } catch {}
+  if (server) { setSync("Зберігаю…"); clearTimeout(pushTimer); pushTimer = setTimeout(push, 400); }
+}
+async function api(method, url, body) {
+  const r = await fetch(url, { method, credentials: "same-origin",
+    headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+function useServerData(d) {
+  rev = d.rev; tx = d.tx; synced = [...ids(tx)];
+  try { localStorage.setItem("budget.tx", JSON.stringify(tx)); } catch {}
+}
+async function push() {
+  pushTimer = null;
+  let r;
+  try { r = await api("PUT", "/api/data", { rev, tx }); } catch { setSync("Немає зв'язку з сервером"); pushTimer = setTimeout(push, 5000); return; }
+  if (r.status === 200) { rev = r.data.rev; synced = [...ids(tx)]; setSync("Збережено"); }
+  else if (r.status === 409) {
+    // дані змінили з іншого пристрою: беремо серверну версію і накладаємо свої зміни
+    const before = new Set(synced), now = ids(tx);
+    const added = tx.filter(t => !before.has(t.id));
+    const deleted = new Set(synced.filter(id => !now.has(id)));
+    const known = ids(r.data.tx);
+    rev = r.data.rev;
+    tx = r.data.tx.filter(t => !deleted.has(t.id)).concat(added.filter(t => !known.has(t.id)));
+    synced = [...known];
+    render(); push();
+  }
+  else if (r.status === 401) showLogin();
+  else setSync("Помилка збереження");
+}
+async function connect() {
+  if (!location.protocol.startsWith("http")) return;
+  let r;
+  try { r = await api("GET", "/api/data"); } catch { return; }
+  if (r.status === 401) return showLogin();
+  if (r.status !== 200 || !Array.isArray(r.data.tx)) return; // сервера немає, працюємо лише в браузері
+  const local = tx;
+  server = true; $("logout").hidden = false;
+  useServerData(r.data);
+  if (!tx.length && local.length && confirm(`У цьому браузері збережено операцій: ${local.length}. Перенести їх на сервер?`)) { tx = local; save(); }
+  else setSync("Збережено");
+  render();
+}
+function showLogin() { $("login").hidden = false; $("password").focus(); }
+$("loginForm").onsubmit = async e => {
+  e.preventDefault();
+  const r = await api("POST", "/api/login", { password: $("password").value });
+  if (r.status === 200) { $("login").hidden = true; $("password").value = ""; $("loginErr").textContent = ""; connect(); }
+  else $("loginErr").textContent = r.data.error || "Не вдалося увійти";
+};
+$("logout").onclick = async () => {
+  await api("POST", "/api/logout");
+  try { localStorage.removeItem("budget.tx"); } catch {}
+  location.reload();
+};
+// повертаючись на вкладку, підтягуємо зміни з інших пристроїв
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden || !server || pushTimer) return;
+  const r = await api("GET", "/api/data").catch(() => null);
+  if (r && r.status === 200 && r.data.rev !== rev) { useServerData(r.data); render(); }
+  else if (r && r.status === 401) showLogin();
+});
 
 const MONTHS = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
 const MONTHS_GEN = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
@@ -469,6 +553,7 @@ $("bankOk").onclick = () => {
 fillCats();
 showDate();
 render();
+connect();
 </script>
 </body>
 </html>
