@@ -49,6 +49,9 @@
   .modal .scroll { overflow:auto; flex:1; margin-top:8px; }
   .modal td select { padding:4px; }
   .modal tr.skip td { opacity:.4; }
+  .drop { position:fixed; inset:0; z-index:30; background:rgba(37,99,235,.15); border:3px dashed var(--accent); display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .drop[hidden] { display:none; }
+  .drop div { background:var(--card); padding:16px 24px; border-radius:12px; font-size:18px; font-weight:600; }
   .tag { font-size:11px; padding:1px 6px; border-radius:6px; background:var(--line); color:var(--text); }
 </style>
 </head>
@@ -105,12 +108,15 @@
 
   <div class="card row">
     <button type="button" id="bankBtn">Імпорт виписки з банку (CSV)</button>
+    <span class="muted" style="flex-basis:100%;font-size:13px">Або просто перетягніть файл виписки в будь-яке місце сторінки.</span>
     <input type="file" id="bankFile" accept=".csv,.txt" hidden>
     <button id="export">Експорт JSON</button>
     <button type="button" id="importBtn">Імпорт JSON</button>
     <input type="file" id="import" accept=".json" hidden>
   </div>
 </main>
+
+<div id="drop" class="drop" hidden><div>Відпустіть файл, щоб імпортувати виписку</div></div>
 
 <div id="modal" class="modal" hidden>
   <div class="card box">
@@ -128,8 +134,8 @@
 
 <script>
 const CATS = {
-  exp: ["Їжа", "Житло", "Транспорт", "Здоров'я", "Розваги", "Одяг", "Зв'язок", "Інше"],
-  inc: ["Зарплата", "Підробіток", "Подарунок", "Інше"]
+  exp: ["Їжа", "Житло", "Транспорт", "Здоров'я", "Розваги", "Одяг", "Зв'язок", "Покупки", "Перекази", "Готівка", "Інше"],
+  inc: ["Зарплата", "Підробіток", "Подарунок", "Повернення", "Перекази", "Готівка", "Інше"]
 };
 const $ = id => document.getElementById(id);
 let tx = [];
@@ -247,14 +253,15 @@ $("export").onclick = () => {
   a.download = "budget.json"; a.click();
 };
 $("importBtn").onclick = () => $("import").click();
-$("import").onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
+async function restoreJSON(f) {
   try { tx = JSON.parse(await f.text()); save(); render(); } catch { alert("Не вдалося прочитати файл"); }
-};
+}
+$("import").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) restoreJSON(f); };
 
 // ---------- Графіки ----------
 const CAT_COLORS = { "Їжа": "#e8833a", "Житло": "#3b82f6", "Транспорт": "#14b8a6", "Здоров'я": "#ef4444",
-  "Розваги": "#a855f7", "Одяг": "#ec4899", "Зв'язок": "#eab308", "Інше": "#94a3b8" };
+  "Розваги": "#a855f7", "Одяг": "#ec4899", "Зв'язок": "#eab308", "Покупки": "#6366f1",
+  "Перекази": "#0ea5e9", "Готівка": "#84cc16", "Інше": "#94a3b8" };
 const catColor = c => CAT_COLORS[c] || "#94a3b8";
 
 function drawDonut(cats, total) {
@@ -297,15 +304,24 @@ function drawTrend() {
 
 // ---------- Імпорт банківської виписки (CSV) ----------
 const RULES = [
-  ["Їжа", /biedronka|lidl|żabka|zabka|auchan|carrefour|kaufland|netto|dino|stokrotka|lewiatan|aldi|intermarche|polomarket|frisco|mcdonald|kfc|burger|pizza|restaur|bistro|kebab|glovo|wolt|pyszne|uber ?eats|piekarnia|cukiernia|starbucks|costa/],
-  ["Транспорт", /orlen|\bbp\b|shell|circle ?k|moya|amic|uber(?! ?eats)|bolt|free ?now|pkp|intercity|koleje|mpk|ztm|jakdojade|skycash|flixbus|paliwo|parking|autostrad/],
+  ["Готівка", /bankomat|wpłatomat|wypłata gotówki|euronet|\batm\b/],
+  ["Їжа", /amrest|makro|pizz|biedronka|lidl|żabka|zabka|auchan|carrefour|kaufland|netto|dino|stokrotka|lewiatan|aldi|intermarche|polomarket|frisco|mcdonald|kfc|burger|pizza|restaur|bistro|kebab|glovo|wolt|pyszne|uber ?eats|piekarnia|cukiernia|starbucks|costa/],
+  ["Транспорт", /orlen|\bbp\b|shell|circle ?k|moya|amic|uber(?! ?eats)|bolt|free ?now|pkp|intercity|koleje|mpk|ztm|jakdojade|skycash|flixbus|paliwo|stacja paliw|parking|autostrad|autocest|tesla|myjnia|mycia|karcher/],
+  ["Покупки", /allegro|amazon|aliexpress|temu|shein|empik|media ?markt|rtv euro|x-kom|morele|ceneo|olx/],
   ["Житло", /czynsz|najem|wynajem|wspólnota|spółdzielnia|tauron|pge|enea|energa|innogy|e\.on|pgnig|fortum|veolia|wodociąg|ikea|castorama|leroy|obi\b|jysk/],
   ["Зв'язок", /orange|\bplay\b|p4 sp|plus\b|polkomtel|t-mobile|netia|upc|vectra|inea/],
   ["Здоров'я", /apteka|doz\b|lekarz|medicover|lux ?med|enel-med|dentyst|stomatolog|klinika|przychodnia|rossmann|hebe|super-pharm/],
-  ["Розваги", /netflix|spotify|youtube|disney|hbo|max\.com|apple\.com|google play|steam|playstation|xbox|kino|cinema city|multikino|helios|teatr|bilet/],
+  ["Розваги", /netflix|spotify|youtube|disney|hbo|max\.com|apple\.com|google play|steam|playstation|xbox|kino|cinema city|multikino|helios|teatr|bilet|padel|fitness|siłownia|basen/],
   ["Одяг", /zara|h&m|\bhm\b|reserved|cropp|house|mohito|sinsay|pepco|ccc\b|deichmann|zalando|answear|decathlon|primark|kik\b|tk ?maxx/],
+  // перекази людям та на інші банки перевіряємо останніми, щоб не перебити оренду чи рахунки
+  ["Перекази", /przelew blik na telefon|przelew na telefon|blik transfer|transfer to phone|przelew krajowy|przelew do innego banku|przekaz sepa|revolut|monobank|wise\b/],
 ];
-const INC_RULES = [["Зарплата", /wynagrodzenie|pensja|wypłata|salary|payroll|зарплата/]];
+const INC_RULES = [
+  ["Зарплата", /wynagrodzenie|pensja|salary|payroll|зарплата/],
+  ["Повернення", /zwrot|refund/],
+  ["Готівка", /wpłatomat|wpłata gotówki/],
+  ["Перекази", /przelew|blik|transfer|revolut|monobank/],
+];
 function guessCat(text, type) {
   const t = text.toLowerCase();
   for (const [c, re] of (type === "inc" ? INC_RULES : RULES)) if (re.test(t)) return c;
@@ -387,7 +403,10 @@ function bankRows() {
     const note = [map.party >= 0 ? r[map.party] : "", desc].filter(Boolean).join(" · ");
     const type = amount < 0 ? "exp" : "inc";
     const dup = tx.some(t => accOf(t) === bank.acc && t.date === date && Math.abs(t.amount - Math.abs(amount)) < 0.005 && t.note === note);
-    const reason = !date || isNaN(amount) || amount === 0 ? "не операція" : cur && cur !== "PLN" ? `валюта ${cur}` : dup ? "вже є" : "";
+    // перекази між власними рахунками не є ні доходом, ні витратою
+    const own = /przelew własny|own transfer/i.test(r.join(" "));
+    const reason = !date || isNaN(amount) || amount === 0 ? "не операція" : cur && cur !== "PLN" ? `валюта ${cur}`
+      : own ? "власний переказ" : dup ? "вже є" : "";
     return { i, date, amount: Math.abs(amount), type, note, reason,
       category: bank.cats[i] || guessCat(r.join(" "), type) };
   });
@@ -407,8 +426,8 @@ function drawBank() {
 }
 
 $("bankBtn").onclick = () => $("bankFile").click();
-$("bankFile").onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+$("bankFile").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) openBankFile(f); };
+async function openBankFile(f) {
   const rows = parseCSV(decode(await f.arrayBuffer()));
   if (!rows.length) return alert("Файл порожній або не схожий на CSV");
   const { idx, map } = findHeader(rows);
@@ -419,7 +438,19 @@ $("bankFile").onchange = async e => {
   $("bankInfo").textContent = `Файл «${f.name}». Перевірте, чи правильно вибрані колонки, і за потреби змініть категорії.`;
   drawBank();
   $("modal").hidden = false;
-};
+}
+
+// Перетягування файлу на сторінку: CSV відкриває імпорт виписки, JSON відновлює резервну копію
+let dragDepth = 0;
+const isFileDrag = e => [...e.dataTransfer.types].includes("Files");
+addEventListener("dragenter", e => { if (isFileDrag(e)) { dragDepth++; $("drop").hidden = false; } });
+addEventListener("dragleave", e => { if (isFileDrag(e) && --dragDepth <= 0) { dragDepth = 0; $("drop").hidden = true; } });
+addEventListener("dragover", e => { if (isFileDrag(e)) e.preventDefault(); });
+addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0; $("drop").hidden = true;
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  if (/\.json$/i.test(f.name)) restoreJSON(f); else openBankFile(f);
+});
 $("bankAcc").onchange = e => { bank.acc = e.target.value; drawBank(); };
 $("mapping").onchange = e => { bank.map[e.target.dataset.map] = +e.target.value; bank.cats = {}; drawBank(); };
 $("preview").onchange = e => { bank.cats[e.target.dataset.row] = e.target.value; };
