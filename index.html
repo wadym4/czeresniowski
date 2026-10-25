@@ -49,6 +49,7 @@
   .modal .scroll { overflow:auto; flex:1; margin-top:8px; }
   .modal td select { padding:4px; }
   .modal tr.skip td { opacity:.4; }
+  .tag { font-size:11px; padding:1px 6px; border-radius:6px; background:var(--line); color:var(--text); }
 </style>
 </head>
 <body>
@@ -59,6 +60,7 @@
     <button type="button" id="prevM">‹</button>
     <b id="monthLabel"></b>
     <button type="button" id="nextM">›</button>
+    <select id="accFilter" style="flex-basis:100%"><option value="all">Усі рахунки</option><option value="priv">Особистий рахунок</option><option value="biz">Бізнес-рахунок</option></select>
   </div>
 
   <div class="card totals">
@@ -70,6 +72,7 @@
   <div class="card">
     <form id="form">
       <select id="type"><option value="exp">Витрата</option><option value="inc">Дохід</option></select>
+      <select id="account"><option value="priv">Особистий</option><option value="biz">Бізнес</option></select>
       <input id="amount" type="number" step="0.01" min="0.01" placeholder="Сума" required>
       <select id="category"></select>
       <div class="dp">
@@ -113,6 +116,7 @@
   <div class="card box">
     <h3 style="margin-top:0">Імпорт виписки</h3>
     <p class="muted" id="bankInfo"></p>
+    <label style="margin-bottom:8px">Рахунок <select id="bankAcc"><option value="priv">Особистий</option><option value="biz">Бізнес</option></select></label>
     <div class="row" id="mapping"></div>
     <div class="scroll"><table><tbody id="preview"></tbody></table></div>
     <div class="row" style="justify-content:flex-end;margin-top:12px">
@@ -138,6 +142,12 @@ const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
 const pad = n => String(n).padStart(2, "0");
 const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const today = iso(new Date());
+
+const ACC_NAMES = { priv: "Особистий", biz: "Бізнес" };
+const accOf = t => t.account || "priv";
+let accFilter = "all";
+try { accFilter = localStorage.getItem("budget.acc") || "all"; } catch {}
+const inAcc = t => accFilter === "all" || accOf(t) === accFilter;
 
 let selDate = today;          // дата нової операції
 let viewMonth = today.slice(0, 7); // місяць, який показуємо у звіті
@@ -177,6 +187,13 @@ function moveMonth(step) {
   m += step; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
   viewMonth = `${y}-${pad(m)}`; render();
 }
+$("accFilter").value = accFilter;
+$("accFilter").onchange = e => {
+  accFilter = e.target.value;
+  try { localStorage.setItem("budget.acc", accFilter); } catch {}
+  if (accFilter !== "all") $("account").value = accFilter;
+  render();
+};
 $("prevM").onclick = () => moveMonth(-1);
 $("nextM").onclick = () => moveMonth(1);
 
@@ -189,7 +206,7 @@ const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&
 function render() {
   const m = viewMonth;
   $("monthLabel").textContent = `${MONTHS[+m.slice(5) - 1]} ${m.slice(0, 4)}`;
-  const items = tx.filter(t => t.date.startsWith(m)).sort((a, b) => b.date.localeCompare(a.date));
+  const items = tx.filter(t => inAcc(t) && t.date.startsWith(m)).sort((a, b) => b.date.localeCompare(a.date));
   const inc = items.filter(t => t.type === "inc").reduce((s, t) => s + t.amount, 0);
   const exp = items.filter(t => t.type === "exp").reduce((s, t) => s + t.amount, 0);
   $("tInc").textContent = fmt(inc);
@@ -208,7 +225,7 @@ function render() {
   drawTrend();
 
   $("list").innerHTML = items.length ? items.map(t => `
-    <tr><td>${t.date.slice(8)}.${t.date.slice(5, 7)}</td><td style="white-space:nowrap"><span class="dot" style="background:${catColor(t.category)}"></span>${t.category}</td><td class="muted">${esc(t.note || "")}</td>
+    <tr><td>${t.date.slice(8)}.${t.date.slice(5, 7)}</td><td style="white-space:nowrap"><span class="dot" style="background:${catColor(t.category)}"></span>${t.category}</td><td class="muted">${accFilter === "all" && accOf(t) === "biz" ? '<span class="tag">Бізнес</span> ' : ""}${esc(t.note || "")}</td>
     <td class="num ${t.type}">${t.type === "exp" ? "−" : "+"}${fmt(t.amount)}</td>
     <td><button class="link" data-id="${t.id}" title="Видалити">✕</button></td></tr>`).join("")
     : `<tr><td class="muted">Операцій за цей місяць немає</td></tr>`;
@@ -217,7 +234,7 @@ function render() {
 $("type").onchange = fillCats;
 $("form").onsubmit = e => {
   e.preventDefault();
-  tx.push({ id: Date.now(), type: $("type").value, amount: +$("amount").value, category: $("category").value, date: selDate, note: $("note").value.trim() });
+  tx.push({ id: Date.now(), type: $("type").value, amount: +$("amount").value, category: $("category").value, date: selDate, note: $("note").value.trim(), account: $("account").value });
   save(); $("amount").value = ""; $("note").value = ""; render();
 };
 $("list").onclick = e => {
@@ -259,7 +276,7 @@ function drawTrend() {
   for (let i = 5; i >= 0; i--) {
     const d = new Date(vy, vm - 1 - i, 1);
     const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-    const its = tx.filter(t => t.date.startsWith(key));
+    const its = tx.filter(t => inAcc(t) && t.date.startsWith(key));
     months.push({ label: MONTHS[d.getMonth()].slice(0, 3), key,
       inc: its.filter(t => t.type === "inc").reduce((s, t) => s + t.amount, 0),
       exp: its.filter(t => t.type === "exp").reduce((s, t) => s + t.amount, 0) });
@@ -333,10 +350,14 @@ function parseDate(s) {
 const COLS = {
   date: ["data operacji", "data transakcji", "data księgowania", "completed date", "started date", "data", "date", "дата"],
   amount: ["kwota operacji", "kwota transakcji", "kwota", "amount", "сума"],
-  desc: ["opis operacji", "opis transakcji", "tytuł", "tytul", "opis", "nazwa odbiorcy", "odbiorca", "kontrahent", "description", "title", "призначення", "опис"],
+  // Millennium та деякі інші банки дають списання й зарахування в окремих колонках
+  debit: ["obciążenia", "obciazenia", "obciążenie", "wypływy", "debit"],
+  credit: ["uznania", "uznanie", "wpływy", "credit"],
+  party: ["odbiorca/zleceniodawca", "nazwa odbiorcy", "odbiorca", "zleceniodawca", "kontrahent", "nadawca"],
+  desc: ["opis operacji", "opis transakcji", "tytuł", "tytul", "opis", "description", "title", "призначення", "опис"],
   currency: ["waluta", "currency", "валюта"],
 };
-const COL_NAMES = { date: "Дата", amount: "Сума", desc: "Опис", currency: "Валюта" };
+const COL_NAMES = { date: "Дата", amount: "Сума", debit: "Списання", credit: "Зарахування", party: "Контрагент", desc: "Опис", currency: "Валюта" };
 let bank = null; // { rows, header, map, cats }
 
 function findHeader(rows) {
@@ -344,25 +365,28 @@ function findHeader(rows) {
     const h = rows[i].map(c => c.toLowerCase().replace(/^#/, ""));
     const pick = keys => { for (const k of keys) { const j = h.findIndex(c => c === k); if (j >= 0) return j; }
                            for (const k of keys) { const j = h.findIndex(c => c.includes(k)); if (j >= 0) return j; } return -1; };
-    const map = { date: pick(COLS.date), amount: pick(COLS.amount), desc: pick(COLS.desc), currency: pick(COLS.currency) };
-    if (map.date >= 0 && map.amount >= 0) return { idx: i, map };
+    const map = Object.fromEntries(Object.keys(COLS).map(k => [k, pick(COLS[k])]));
+    if (map.date >= 0 && (map.amount >= 0 || map.debit >= 0 || map.credit >= 0)) return { idx: i, map };
   }
   // без заголовка: шукаємо колонки за вмістом
   const r = rows.find(r => r.some(parseDate) && r.some(c => /\d[,.]\d{2}$/.test(c))) || rows[0];
   return { idx: -1, map: { date: r.findIndex(c => parseDate(c)), amount: r.findIndex(c => /^[-+]?[\d\s]+[,.]\d{2}/.test(c) && !parseDate(c)),
-    desc: r.findIndex(c => /[a-zа-яąćęłńóśźż]{4}/i.test(c)), currency: -1 } };
+    desc: r.findIndex(c => /[a-zа-яąćęłńóśźż]{4}/i.test(c)), currency: -1, debit: -1, credit: -1, party: -1 } };
 }
 
 function bankRows() {
   const { rows, start, map } = bank;
   return rows.slice(start).map((r, i) => {
-    const amount = parseAmount(r[map.amount]), date = parseDate(r[map.date]);
+    const date = parseDate(r[map.date]);
+    const amount = map.amount >= 0 ? parseAmount(r[map.amount])
+      : (parseAmount(r[map.credit]) || 0) - Math.abs(parseAmount(r[map.debit]) || 0);
     const cur = map.currency >= 0 ? (r[map.currency] || "").toUpperCase() : "PLN";
     // у PKO опис розбитий на кілька колонок без назви, тому склеюємо їх
-    let note = map.desc >= 0 ? r[map.desc] : "";
-    for (let j = map.desc + 1; map.desc >= 0 && j < r.length && !bank.header[j]; j++) if (r[j]) note += " · " + r[j];
+    let desc = map.desc >= 0 ? r[map.desc] : "";
+    for (let j = map.desc + 1; map.desc >= 0 && j < r.length && !bank.header[j]; j++) if (r[j]) desc += " · " + r[j];
+    const note = [map.party >= 0 ? r[map.party] : "", desc].filter(Boolean).join(" · ");
     const type = amount < 0 ? "exp" : "inc";
-    const dup = tx.some(t => t.date === date && Math.abs(t.amount - Math.abs(amount)) < 0.005 && t.note === note);
+    const dup = tx.some(t => accOf(t) === bank.acc && t.date === date && Math.abs(t.amount - Math.abs(amount)) < 0.005 && t.note === note);
     const reason = !date || isNaN(amount) || amount === 0 ? "не операція" : cur && cur !== "PLN" ? `валюта ${cur}` : dup ? "вже є" : "";
     return { i, date, amount: Math.abs(amount), type, note, reason,
       category: bank.cats[i] || guessCat(r.join(" "), type) };
@@ -390,18 +414,20 @@ $("bankFile").onchange = async e => {
   const { idx, map } = findHeader(rows);
   const width = Math.max(...rows.map(r => r.length));
   const header = idx >= 0 ? Array.from({ length: width }, (_, j) => (rows[idx][j] || "").replace(/^#/, "")) : Array.from({ length: width }, (_, j) => "Колонка " + (j + 1));
-  bank = { rows, start: idx + 1, header, map, cats: {} };
+  bank = { rows, start: idx + 1, header, map, cats: {}, acc: accFilter === "all" ? "priv" : accFilter };
+  $("bankAcc").value = bank.acc;
   $("bankInfo").textContent = `Файл «${f.name}». Перевірте, чи правильно вибрані колонки, і за потреби змініть категорії.`;
   drawBank();
   $("modal").hidden = false;
 };
+$("bankAcc").onchange = e => { bank.acc = e.target.value; drawBank(); };
 $("mapping").onchange = e => { bank.map[e.target.dataset.map] = +e.target.value; bank.cats = {}; drawBank(); };
 $("preview").onchange = e => { bank.cats[e.target.dataset.row] = e.target.value; };
 $("bankCancel").onclick = () => { $("modal").hidden = true; bank = null; };
 $("bankOk").onclick = () => {
   const ok = bankRows().filter(r => !r.reason);
   let id = Date.now();
-  ok.forEach(r => tx.push({ id: id++, type: r.type, amount: r.amount, category: r.category, date: r.date, note: r.note }));
+  ok.forEach(r => tx.push({ id: id++, type: r.type, amount: r.amount, category: r.category, date: r.date, note: r.note, account: bank.acc }));
   save(); $("modal").hidden = true; bank = null;
   const last = ok.map(r => r.date).sort().pop();
   if (last) viewMonth = last.slice(0, 7);
