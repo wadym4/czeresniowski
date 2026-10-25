@@ -30,3 +30,12 @@ sudo bash deploy/setup.sh my.domain  # власний домен з HTTPS
 Оновлення: `cd ~/czeresniowski && git pull && bash deploy/setup.sh`
 
 Змінити пароль: `sudo -u czeres DATA_DIR=/var/lib/czeresniowski python3 /opt/czeresniowski/server.py --set-password`
+
+## Автоматичне підтягування з банку
+
+Працює через Enable Banking (PSD2), безкоштовний режим для власних рахунків.
+
+1. Зареєструйтеся на enablebanking.com, створіть застосунок **Production** з Redirect URL `https://<адреса сайту>/api/bank/callback`, збережіть файл `.pem` і натисніть «Link accounts», щоб підключити свої рахунки.
+2. Скопіюйте ключ на сервер: `scp ~/Downloads/<id>.pem root@<ip>:/root/eb.pem`
+3. На сервері: `cd ~/czeresniowski && git pull && bash deploy/setup.sh && bash deploy/bank.sh <Application ID> /root/eb.pem`
+4. На сайті натисніть «Підключити банк». Операції оновлюються автоматично раз на день, коли ви відкриваєте сайт, і за кнопкою «Оновити з банку».

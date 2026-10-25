@@ -110,6 +110,16 @@
     <table><tbody id="list"></tbody></table>
   </div>
 
+  <div class="card" id="bankCard" hidden>
+    <h3 style="margin-top:0">Банк</h3>
+    <div id="bankConns" class="muted"></div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" id="bankSync">Оновити з банку</button>
+      <button type="button" id="bankConnect">Підключити банк</button>
+      <span id="bankMsg" class="muted" style="font-size:13px"></span>
+    </div>
+  </div>
+
   <div class="card row">
     <button type="button" id="bankBtn">Імпорт виписки з банку (CSV)</button>
     <span class="muted" style="flex-basis:100%;font-size:13px">Або просто перетягніть файл виписки в будь-яке місце сторінки.</span>
@@ -126,6 +136,19 @@
     <input id="password" type="password" placeholder="Пароль" autocomplete="current-password" required>
     <p class="exp" id="loginErr" style="min-height:1.2em;margin:8px 0"></p>
     <button>Увійти</button>
+  </form>
+</div>
+
+<div id="bankModal" class="modal" hidden>
+  <form class="card box" id="bankConnForm" style="max-width:420px">
+    <h3 style="margin-top:0">Підключити банк</h3>
+    <label>Банк <select id="bcBank" required></select></label>
+    <label style="margin-top:8px">Рахунок у програмі <select id="bcAcc"><option value="priv">Особистий</option><option value="biz">Бізнес</option></select></label>
+    <p class="muted" style="font-size:13px">Вас перенаправить на сайт банку, щоб підтвердити доступ лише для перегляду операцій.</p>
+    <div class="row" style="justify-content:flex-end">
+      <button type="button" class="link" id="bcCancel">Скасувати</button>
+      <button>Перейти до банку</button>
+    </div>
   </form>
 </div>
 
@@ -205,6 +228,7 @@ async function connect() {
   if (!tx.length && local.length && confirm(`У цьому браузері збережено операцій: ${local.length}. Перенести їх на сервер?`)) { tx = local; save(); }
   else setSync("Збережено");
   render();
+  initBank();
 }
 function showLogin() { $("login").hidden = false; $("password").focus(); }
 $("loginForm").onsubmit = async e => {
@@ -548,6 +572,85 @@ $("bankOk").onclick = () => {
   if (last) viewMonth = last.slice(0, 7);
   render();
   alert(`Імпортовано операцій: ${ok.length}`);
+};
+
+// ---------- Автоматичне підтягування з банку (Enable Banking на сервері) ----------
+let bankState = null;
+const fmtDate = d => d ? d.slice(0, 10).split("-").reverse().join(".") : "";
+async function initBank() {
+  const r = await api("GET", "/api/bank/status").catch(() => null);
+  if (!r || r.status !== 200) return;
+  bankState = r.data;
+  $("bankCard").hidden = false;
+  drawBankConns();
+  const back = new URLSearchParams(location.search).get("bank");
+  if (back) {
+    history.replaceState(null, "", location.pathname);
+    if (back !== "ok") { $("bankMsg").textContent = "Не вдалося підключити: " + back; return; }
+  }
+  // автоматично оновлюємо раз на день або одразу після підключення
+  if (back === "ok" || bankState.connections.some(c => c.last_fetch !== today)) bankSync();
+}
+function drawBankConns() {
+  const b = bankState;
+  $("bankConnect").disabled = !b.configured;
+  $("bankSync").disabled = !b.connections.length;
+  $("bankConns").innerHTML = !b.configured
+    ? "Підключення до банку ще не налаштоване на сервері."
+    : b.connections.length ? b.connections.map(c => `<div class="row" style="justify-content:space-between;margin:4px 0">
+        <span><b style="color:var(--text)">${esc(c.bank)}</b> · ${ACC_NAMES[c.account]} · ${c.accounts.length} рах.</span>
+        <span>${c.valid_until ? "доступ до " + fmtDate(c.valid_until) : ""}${c.last_fetch ? " · оновлено " + fmtDate(c.last_fetch) : ""}
+        <button type="button" class="link" data-conn="${esc(c.id)}" title="Відключити">✕</button></span></div>`).join("")
+    : "Банк ще не підключено.";
+}
+async function bankSync() {
+  $("bankMsg").textContent = "Завантажую операції…"; $("bankSync").disabled = true;
+  const r = await api("POST", "/api/bank/fetch", {}).catch(() => null);
+  $("bankSync").disabled = false;
+  if (!r || r.status !== 200) { $("bankMsg").textContent = (r && r.data.error) || "Не вдалося зв'язатися з банком"; return; }
+  let added = 0;
+  for (const b of r.data.transactions) {
+    if (!b.date || tx.some(t => t.bankRef === b.ref)) continue;
+    if (/przelew własny|own transfer/i.test(b.note)) continue;
+    const type = b.amount < 0 ? "exp" : "inc", amount = Math.abs(b.amount);
+    // операція вже могла потрапити сюди з CSV-виписки: тоді лише позначаємо її
+    const same = tx.find(t => !t.bankRef && accOf(t) === b.account && t.date === b.date && t.type === type && Math.abs(t.amount - amount) < 0.005);
+    if (same) { same.bankRef = b.ref; continue; }
+    tx.push({ id: Date.now() + added, type, amount, category: guessCat(b.note, type), date: b.date, note: b.note, account: b.account, bankRef: b.ref });
+    added++;
+  }
+  save(); render();
+  const st = await api("GET", "/api/bank/status").catch(() => null);
+  if (st && st.status === 200) { bankState = st.data; drawBankConns(); }
+  $("bankMsg").textContent = (added ? `Нових операцій: ${added}` : "Нових операцій немає") + (r.data.errors.length ? ". Помилки: " + r.data.errors.join("; ") : "");
+}
+$("bankSync").onclick = bankSync;
+$("bankConns").onclick = async e => {
+  const id = e.target.dataset.conn;
+  if (!id || !confirm("Відключити цей банк? Уже завантажені операції залишаться.")) return;
+  await api("POST", "/api/bank/remove", { id });
+  initBank();
+};
+let bankList = null;
+$("bankConnect").onclick = async () => {
+  $("bankMsg").textContent = "";
+  if (!bankList) {
+    const r = await api("GET", "/api/bank/banks").catch(() => null);
+    if (!r || r.status !== 200) { $("bankMsg").textContent = (r && r.data.error) || "Не вдалося отримати список банків"; return; }
+    bankList = r.data.sort((a, b) => /millennium/i.test(b.name) - /millennium/i.test(a.name) || a.name.localeCompare(b.name));
+  }
+  $("bcBank").innerHTML = bankList.map((b, i) => `<option value="${i}">${esc(b.name)}</option>`).join("");
+  if (accFilter !== "all") $("bcAcc").value = accFilter;
+  $("bankModal").hidden = false;
+};
+$("bcCancel").onclick = () => { $("bankModal").hidden = true; };
+$("bankConnForm").onsubmit = async e => {
+  e.preventDefault();
+  const b = bankList[$("bcBank").value], account = $("bcAcc").value;
+  const psu_type = account === "biz" && b.psu_types.includes("business") ? "business" : "personal";
+  const r = await api("POST", "/api/bank/connect", { bank: b.name, account, psu_type });
+  if (r.status === 200) location.href = r.data.url;
+  else { $("bankModal").hidden = true; $("bankMsg").textContent = r.data.error || "Не вдалося почати підключення"; }
 };
 
 fillCats();

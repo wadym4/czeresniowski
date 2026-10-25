@@ -10,11 +10,15 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import sys
 import threading
 import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, quote, urlsplit
+
+from bank import Bank, BankError
 
 DATA_DIR = os.environ.get("DATA_DIR", "/var/lib/czeresniowski")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -27,6 +31,7 @@ SESSIONS = os.path.join(DATA_DIR, "sessions.json")
 BACKUPS = os.path.join(DATA_DIR, "backups")
 
 lock = threading.Lock()
+bank = Bank(DATA_DIR, lambda p, d: read_json(p, d), lambda p, v: write_json(p, v))
 failed = {}  # ip -> (кількість невдалих спроб, час останньої)
 
 
@@ -71,6 +76,17 @@ def set_password():
     write_json(CONFIG, hash_password(p1))
     write_json(SESSIONS, {})  # після зміни пароля всі мають увійти знову
     print("Пароль збережено")
+
+
+def set_bank(app_id, pem):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    key = os.path.join(DATA_DIR, "enablebanking.pem")
+    shutil.copyfile(pem, key)
+    os.chmod(key, 0o600)
+    cfg = read_json(os.path.join(DATA_DIR, "bank.json"), {"connections": [], "pending": {}})
+    cfg["app_id"] = app_id
+    write_json(os.path.join(DATA_DIR, "bank.json"), cfg)
+    print("Ключ Enable Banking збережено")
 
 
 def backup(data):
@@ -126,7 +142,36 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return origin is None or origin.split("://", 1)[-1] == self.headers.get("Host")
 
+    def redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def bank_call(self, fn, *args):
+        try:
+            return self.send(200, fn(*args))
+        except BankError as e:
+            return self.send(502, {"error": str(e)})
+
     def do_GET(self):
+        url = urlsplit(self.path)
+        if url.path == "/api/bank/callback":
+            # банк повертає сюди з чужого сайту, тому cookie немає; захищає одноразовий state
+            q = {k: v[0] for k, v in parse_qs(url.query).items()}
+            if "error" in q:
+                return self.redirect("/?bank=" + quote(q.get("error_description") or q["error"]))
+            try:
+                bank.finish(q.get("code", ""), q.get("state", ""))
+            except BankError as e:
+                return self.redirect("/?bank=" + quote(str(e)))
+            return self.redirect("/?bank=ok")
+        if url.path.startswith("/api/bank/") and not self.session():
+            return self.send(401)
+        if url.path == "/api/bank/status":
+            return self.send(200, bank.status())
+        if url.path == "/api/bank/banks":
+            return self.bank_call(bank.banks)
         if self.path == "/api/data":
             if not self.session():
                 return self.send(401)
@@ -156,6 +201,22 @@ class Handler(BaseHTTPRequestHandler):
                 sessions[token] = time.time() + SESSION_DAYS * 86400
                 write_json(SESSIONS, sessions)
             return self.send(200, cookie=self.cookie(token, SESSION_DAYS * 86400))
+        if self.path.startswith("/api/bank/"):
+            if not self.session():
+                return self.send(401)
+            try:
+                body = self.body()
+            except ValueError:
+                return self.send(400)
+            if self.path == "/api/bank/connect":
+                proto = self.headers.get("X-Forwarded-Proto", "http")
+                redirect_url = f"{proto}://{self.headers.get('Host')}/api/bank/callback"
+                return self.bank_call(lambda: {"url": bank.start(str(body.get("bank")), body.get("psu_type") or "personal",
+                                                                   body.get("account") or "priv", redirect_url)})
+            if self.path == "/api/bank/fetch":
+                return self.bank_call(bank.fetch)
+            if self.path == "/api/bank/remove":
+                return self.bank_call(lambda: bank.remove(str(body.get("id"))) or {})
         if self.path == "/api/logout":
             token = self.session()
             if token:
@@ -193,6 +254,10 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if "--set-password" in sys.argv:
         set_password()
+        sys.exit()
+    if "--set-bank" in sys.argv:
+        i = sys.argv.index("--set-bank")
+        set_bank(sys.argv[i + 1], sys.argv[i + 2])
         sys.exit()
     if not os.path.exists(CONFIG):
         sys.exit("Пароль не встановлено. Запустіть: python3 server.py --set-password")

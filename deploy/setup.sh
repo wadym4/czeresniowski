@@ -15,11 +15,12 @@ DOMAIN="${1:-${IP//./-}.sslip.io}"
 [ "$(id -u)" -eq 0 ] || { echo "Запустіть через sudo"; exit 1; }
 
 apt-get update -y
-apt-get install -y nginx python3 certbot python3-certbot-nginx
+apt-get install -y nginx python3 openssl certbot python3-certbot-nginx
 
 # сайт і сервер даних
 install -d "$ROOT" "$APP"
 install -m 644 "$REPO/index.html" "$ROOT/index.html"
+install -m 644 "$REPO/server/bank.py" "$APP/bank.py"
 install -m 755 "$REPO/server/server.py" "$APP/server.py"
 id czeres >/dev/null 2>&1 || useradd --system --home-dir "$DATA" --shell /usr/sbin/nologin czeres
 install -d -o czeres -g czeres -m 700 "$DATA"
