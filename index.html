@@ -5,136 +5,253 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Мій бюджет</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --inc:#15803d; --exp:#b91c1c; --line:#e5e7eb; --accent:#2563eb; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#12151b; --card:#1b1f27; --text:#e5e7eb; --muted:#9ca3af; --inc:#4ade80; --exp:#f87171; --line:#2c323d; --accent:#60a5fa; }
+  :root {
+    --bg1:#d9c7b0; --bg2:#8f7a63; --bg3:#3f3429;
+    --glass:rgba(255,255,255,.42); --glass-strong:rgba(255,255,255,.62); --glass-border:rgba(255,255,255,.55);
+    --text:#1c1917; --muted:#57534e; --line:rgba(28,25,23,.1);
+    --inc:#0f9f8a; --inc2:#2dd4bf; --exp:#1c1917; --neg:#dc2626; --accent:#1c1917; --on-accent:#fff;
+    --shadow:0 10px 40px rgba(40,30,20,.18);
   }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; }
-  main { max-width:760px; margin:0 auto; padding:16px; }
-  h1 { font-size:22px; margin:8px 0 16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
-  .totals { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
-  .totals div span { display:block; color:var(--muted); font-size:13px; }
-  .totals b { font-size:20px; }
-  .inc { color:var(--inc); } .exp { color:var(--exp); }
-  form { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; }
-  input, select, button { font:inherit; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); }
-  button { background:var(--accent); color:#fff; border:none; cursor:pointer; }
-  button.link { background:none; color:var(--muted); padding:2px 6px; }
-  table { width:100%; border-collapse:collapse; }
-  td, th { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; }
-  td.num { text-align:right; white-space:nowrap; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .bar { height:8px; background:var(--exp); border-radius:4px; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg1:#3b2f25; --bg2:#1f1915; --bg3:#0d0b09;
+      --glass:rgba(40,34,29,.45); --glass-strong:rgba(55,47,40,.7); --glass-border:rgba(255,255,255,.12);
+      --text:#f5f0ea; --muted:#b8ada1; --line:rgba(255,255,255,.1);
+      --inc:#2dd4bf; --inc2:#0f9f8a; --exp:#e7e1da; --neg:#f87171; --accent:#f5f0ea; --on-accent:#1c1917;
+      --shadow:0 10px 40px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing:border-box; }
+  html { min-height:100%; }
+  body {
+    margin:0; color:var(--text); font:15px/1.45 "Inter", system-ui, -apple-system, sans-serif;
+    min-height:100vh; background:var(--bg2);
+    background-image:
+      radial-gradient(900px 600px at 10% 0%, var(--bg1), transparent 60%),
+      radial-gradient(800px 700px at 100% 30%, rgba(45,212,191,.25), transparent 60%),
+      radial-gradient(1000px 800px at 50% 110%, var(--bg3), transparent 60%);
+    background-attachment:fixed;
+  }
+  .glass, .card {
+    background:var(--glass); border:1px solid var(--glass-border); border-radius:24px;
+    backdrop-filter:blur(22px) saturate(140%); -webkit-backdrop-filter:blur(22px) saturate(140%);
+    box-shadow:var(--shadow);
+  }
+  .card { padding:20px; transition:transform .2s ease; }
+  .lift:hover { transform:translateY(-4px); }
+  h1 { font-size:28px; margin:0; letter-spacing:-.02em; }
+  h3 { font-size:15px; margin:0 0 12px; font-weight:600; }
   .muted { color:var(--muted); }
-  .dp { position:relative; }
-  .field { width:100%; text-align:left; background:var(--card); color:var(--text); border:1px solid var(--line); }
-  .cal { position:absolute; z-index:10; top:calc(100% + 4px); left:0; width:260px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:0 8px 24px rgba(0,0,0,.15); }
-  .cal .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-  .cal .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
-  .cal .grid span { font-size:12px; color:var(--muted); padding:4px 0; }
-  .cal .grid button { padding:6px 0; background:none; color:var(--text); border-radius:6px; }
-  .cal .grid button:hover { background:var(--line); }
-  .cal .grid button.sel { background:var(--accent); color:#fff; }
-  .cal .grid button.today { outline:1px solid var(--accent); }
+  .inc { color:var(--inc); } .exp { color:var(--text); } .neg { color:var(--neg); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+  input, select, button { font:inherit; color:var(--text); }
+  input, select, .field {
+    padding:10px 12px; border-radius:14px; border:1px solid var(--glass-border); background:var(--glass-strong); width:100%;
+  }
+  button { padding:10px 16px; border-radius:999px; border:none; background:var(--accent); color:var(--on-accent); cursor:pointer; font-weight:500; }
+  button.ghost { background:var(--glass-strong); color:var(--text); border:1px solid var(--glass-border); }
+  button.link { background:none; color:var(--muted); padding:2px 6px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .field { text-align:left; font-weight:400; color:var(--text); }
+
+  /* розмітка */
+  .app { display:flex; gap:20px; max-width:1320px; margin:0 auto; padding:20px; }
+  .side { position:sticky; top:20px; align-self:flex-start; display:flex; flex-direction:column; gap:6px; padding:10px; border-radius:999px; }
+  .side a { width:44px; height:44px; display:grid; place-items:center; border-radius:50%; color:var(--muted); }
+  .side a:hover, .side a.on { background:var(--glass-strong); color:var(--text); }
+  .side svg { width:20px; height:20px; }
+  main { flex:1; min-width:0; display:flex; flex-direction:column; gap:20px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; padding:10px 10px 10px 20px; border-radius:999px; gap:12px; flex-wrap:wrap; }
+  .month { display:flex; align-items:center; gap:4px; }
+  .month button { width:36px; height:36px; padding:0; background:var(--glass-strong); color:var(--text); border:1px solid var(--glass-border); }
+  .month b { min-width:130px; text-align:center; }
+  .topbar select { width:auto; border-radius:999px; }
+  .grid { display:grid; grid-template-columns:minmax(260px,1fr) minmax(300px,1.1fr) minmax(320px,1.4fr); gap:20px; }
+  .col { display:flex; flex-direction:column; gap:20px; min-width:0; }
+  .grid.two { grid-template-columns:1fr 1fr; }
+
+  .balance .big { font-size:36px; font-weight:700; letter-spacing:-.02em; margin:4px 0 12px; }
+  .accs { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+  .acc { padding:12px; border-radius:16px; background:var(--glass-strong); border:1px solid var(--glass-border); cursor:pointer; }
+  .acc.on { outline:2px solid var(--accent); }
+  .acc b { display:block; font-size:16px; margin-top:4px; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .stat { padding:16px; min-height:120px; display:flex; flex-direction:column; justify-content:space-between; }
+  .stat span { font-size:13px; color:var(--muted); }
+  .stat b { font-size:24px; letter-spacing:-.02em; }
+  .stat.hero { background:linear-gradient(145deg, var(--inc2), var(--inc)); color:#fff; border-color:rgba(255,255,255,.35); }
+  .stat.hero span { color:rgba(255,255,255,.8); }
+
+  form#form { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  form#form .full { grid-column:1 / -1; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:10px 6px; border-bottom:1px solid var(--line); text-align:left; }
+  tr:last-child td { border-bottom:none; }
+  td.num { text-align:right; white-space:nowrap; font-weight:600; }
+  td.note { max-width:0; width:100%; font-size:13px; }
+  td.note div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  td.num.exp { color:var(--text); } td.num.inc { color:var(--inc); }
+  .scrollList { max-height:520px; overflow:auto; }
   .donutWrap { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
   .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
   .legend { display:flex; gap:16px; font-size:13px; color:var(--muted); margin-bottom:4px; }
-  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; }
   #trend text { fill:var(--muted); font-size:12px; }
-  .modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:16px; z-index:20; }
+  .tag { font-size:11px; padding:1px 8px; border-radius:999px; background:var(--glass-strong); color:var(--text); }
+
+  .dp { position:relative; }
+  .cal { position:absolute; z-index:10; top:calc(100% + 6px); left:0; width:270px; padding:12px; border-radius:20px;
+         background:var(--glass-strong); border:1px solid var(--glass-border); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); box-shadow:var(--shadow); }
+  .cal .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .cal .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
+  .cal .grid span { font-size:12px; color:var(--muted); padding:4px 0; }
+  .cal .grid button { padding:6px 0; background:none; color:var(--text); border-radius:10px; }
+  .cal .grid button:hover { background:var(--glass); }
+  .cal .grid button.sel { background:var(--accent); color:var(--on-accent); }
+  .cal .grid button.today { outline:1px solid var(--inc); }
+
+  .modal { position:fixed; inset:0; background:rgba(20,15,10,.35); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+           display:flex; align-items:center; justify-content:center; padding:16px; z-index:20; }
   .modal[hidden] { display:none; }
-  .modal .box { width:100%; max-width:820px; max-height:90vh; display:flex; flex-direction:column; margin:0; }
+  .modal .box { width:100%; max-width:820px; max-height:90vh; display:flex; flex-direction:column; margin:0; background:var(--glass-strong); }
+  .modal .box label { display:flex; flex-direction:column; gap:4px; }
   .modal .scroll { overflow:auto; flex:1; margin-top:8px; }
-  .modal td select { padding:4px; }
+  .modal td select { padding:4px 8px; }
   .modal tr.skip td { opacity:.4; }
-  .drop { position:fixed; inset:0; z-index:30; background:rgba(37,99,235,.15); border:3px dashed var(--accent); display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .drop { position:fixed; inset:0; z-index:30; background:rgba(45,212,191,.15); border:3px dashed var(--inc); display:flex; align-items:center; justify-content:center; pointer-events:none; }
   .drop[hidden] { display:none; }
-  .drop div { background:var(--card); padding:16px 24px; border-radius:12px; font-size:18px; font-weight:600; }
-  .tag { font-size:11px; padding:1px 6px; border-radius:6px; background:var(--line); color:var(--text); }
+  .drop div { padding:16px 24px; border-radius:20px; font-size:18px; font-weight:600; background:var(--glass-strong); backdrop-filter:blur(20px); }
+
+  @media (max-width:1100px) { .grid { grid-template-columns:1fr 1fr; } .grid > .col:last-child { grid-column:span 2; } }
+  @media (max-width:720px) {
+    .app { padding:16px 16px 90px; }
+    .grid, .grid.two { grid-template-columns:1fr; } .grid > .col:last-child, .wide { grid-column:auto; }
+    .side { position:fixed; top:auto; bottom:12px; left:50%; transform:translateX(-50%); flex-direction:row; z-index:15; }
+    .topbar { border-radius:24px; }
+    h1 { font-size:22px; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <div class="row" style="justify-content:space-between">
-    <h1>Мій бюджет</h1>
-    <span class="row"><span id="syncState" class="muted" style="font-size:13px"></span>
-      <button type="button" class="link" id="logout" hidden>Вийти</button></span>
-  </div>
+<div class="app">
+  <nav class="side glass">
+    <a href="#top" title="Огляд" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></a>
+    <a href="#add" title="Додати операцію"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></a>
+    <a href="#ops" title="Операції"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></a>
+    <a href="#charts" title="Графіки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></a>
+    <a href="#bank" title="Банк та імпорт"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18"/></svg></a>
+  </nav>
 
-  <div class="card row" style="justify-content:space-between">
-    <button type="button" id="prevM">‹</button>
-    <b id="monthLabel"></b>
-    <button type="button" id="nextM">›</button>
-    <select id="accFilter" style="flex-basis:100%"><option value="all">Усі рахунки</option><option value="priv">Особистий рахунок</option><option value="biz">Бізнес-рахунок</option></select>
-  </div>
-
-  <div class="card totals">
-    <div><span>Доходи</span><b class="inc" id="tInc">0</b></div>
-    <div><span>Витрати</span><b class="exp" id="tExp">0</b></div>
-    <div><span>Залишок</span><b id="tBal">0</b></div>
-  </div>
-
-  <div class="card">
-    <form id="form">
-      <select id="type"><option value="exp">Витрата</option><option value="inc">Дохід</option></select>
-      <select id="account"><option value="priv">Особистий</option><option value="biz">Бізнес</option></select>
-      <input id="amount" type="number" step="0.01" min="0.01" placeholder="Сума" required>
-      <select id="category"></select>
-      <div class="dp">
-        <button type="button" id="dateBtn" class="field"></button>
-        <div id="cal" class="cal" hidden></div>
+  <main id="top">
+    <header class="topbar glass">
+      <div>
+        <h1 id="greeting">Мій бюджет</h1>
+        <span id="syncState" class="muted" style="font-size:13px"></span>
       </div>
-      <input id="note" placeholder="Коментар">
-      <button>Додати</button>
-    </form>
-  </div>
+      <div class="row">
+        <div class="month">
+          <button type="button" id="prevM" title="Попередній місяць">‹</button>
+          <b id="monthLabel"></b>
+          <button type="button" id="nextM" title="Наступний місяць">›</button>
+        </div>
+        <select id="accFilter"><option value="all">Усі рахунки</option><option value="priv">Особистий рахунок</option><option value="biz">Бізнес-рахунок</option></select>
+        <button type="button" class="ghost" id="logout" hidden>Вийти</button>
+      </div>
+    </header>
 
-  <div class="card">
-    <h3 style="margin-top:0">Витрати за категоріями</h3>
-    <div class="donutWrap">
-      <svg id="donut" viewBox="0 0 120 120" width="160" height="160"></svg>
-      <div id="byCat" class="muted" style="flex:1;min-width:200px">Немає витрат</div>
+    <div class="grid">
+      <div class="col">
+        <section class="card balance">
+          <span class="muted">Залишок за місяць</span>
+          <div class="big" id="tBal">0</div>
+          <div class="row">
+            <button type="button" onclick="document.getElementById('add').scrollIntoView({behavior:'smooth'});document.getElementById('amount').focus()">+ Додати</button>
+            <button type="button" class="ghost" onclick="document.getElementById('bankFile').click()">Імпорт виписки</button>
+          </div>
+          <div class="accs">
+            <div class="acc" data-acc="priv"><span class="muted" style="font-size:13px">Особистий</span><b id="accPriv">0</b></div>
+            <div class="acc" data-acc="biz"><span class="muted" style="font-size:13px">Бізнес</span><b id="accBiz">0</b></div>
+          </div>
+        </section>
+
+        <section class="card" id="add">
+          <h3>Нова операція</h3>
+          <form id="form">
+            <select id="type"><option value="exp">Витрата</option><option value="inc">Дохід</option></select>
+            <select id="account"><option value="priv">Особистий</option><option value="biz">Бізнес</option></select>
+            <input id="amount" type="number" step="0.01" min="0.01" placeholder="Сума, zł" required>
+            <select id="category"></select>
+            <div class="dp full">
+              <button type="button" id="dateBtn" class="field"></button>
+              <div id="cal" class="cal" hidden></div>
+            </div>
+            <input id="note" class="full" placeholder="Коментар">
+            <button class="full">Додати</button>
+          </form>
+        </section>
+      </div>
+
+      <div class="col">
+        <div class="stats">
+          <div class="card stat hero lift"><span>Доходи</span><b id="tInc">0</b></div>
+          <div class="card stat lift"><span>Витрати</span><b id="tExp">0</b></div>
+          <div class="card stat lift"><span>Витрати за день</span><b id="tAvg">0</b></div>
+          <div class="card stat lift"><span>Операцій</span><b id="tCount">0</b></div>
+        </div>
+        <section class="card">
+          <h3>Витрати за категоріями</h3>
+          <div class="donutWrap">
+            <svg id="donut" viewBox="0 0 120 120" width="150" height="150"></svg>
+            <div id="byCat" class="muted" style="flex:1;min-width:180px">Немає витрат</div>
+          </div>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="card" id="charts">
+          <div class="row" style="justify-content:space-between"><h3 style="margin:0">Доходи і витрати</h3>
+            <div class="legend"><span><i style="background:var(--inc)"></i>Доходи</span><span><i style="background:var(--exp)"></i>Витрати</span></div></div>
+          <svg id="trend" viewBox="0 0 600 260" width="100%"></svg>
+        </section>
+        <section class="card" id="ops">
+          <h3>Операції</h3>
+          <div class="scrollList"><table><tbody id="list"></tbody></table></div>
+        </section>
+      </div>
     </div>
-  </div>
 
-  <div class="card">
-    <h3 style="margin-top:0">Останні 6 місяців</h3>
-    <div class="legend"><span><i style="background:var(--inc)"></i>Доходи</span><span><i style="background:var(--exp)"></i>Витрати</span></div>
-    <svg id="trend" viewBox="0 0 600 220" width="100%"></svg>
-  </div>
-
-  <div class="card">
-    <h3 style="margin-top:0">Операції</h3>
-    <table><tbody id="list"></tbody></table>
-  </div>
-
-  <div class="card" id="bankCard" hidden>
-    <h3 style="margin-top:0">Банк</h3>
-    <div id="bankConns" class="muted"></div>
-    <div class="row" style="margin-top:8px">
-      <button type="button" id="bankSync">Оновити з банку</button>
-      <button type="button" id="bankConnect">Підключити банк</button>
-      <span id="bankMsg" class="muted" style="font-size:13px"></span>
+    <div class="grid two" id="bank">
+      <section class="card" id="bankCard" hidden>
+        <h3>Банк</h3>
+        <div id="bankConns" class="muted"></div>
+        <div class="row" style="margin-top:12px">
+          <button type="button" id="bankSync">Оновити з банку</button>
+          <button type="button" class="ghost" id="bankConnect">Підключити банк</button>
+          <span id="bankMsg" class="muted" style="font-size:13px"></span>
+        </div>
+      </section>
+      <section class="card">
+        <h3>Імпорт і резервна копія</h3>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Перетягніть файл виписки CSV у будь-яке місце сторінки або виберіть його кнопкою.</p>
+        <div class="row">
+          <button type="button" id="bankBtn">Імпорт виписки (CSV)</button>
+          <input type="file" id="bankFile" accept=".csv,.txt" hidden>
+          <button class="ghost" id="export">Експорт JSON</button>
+          <button type="button" class="ghost" id="importBtn">Імпорт JSON</button>
+          <input type="file" id="import" accept=".json" hidden>
+        </div>
+      </section>
     </div>
-  </div>
+  </main>
+</div>
 
-  <div class="card row">
-    <button type="button" id="bankBtn">Імпорт виписки з банку (CSV)</button>
-    <span class="muted" style="flex-basis:100%;font-size:13px">Або просто перетягніть файл виписки в будь-яке місце сторінки.</span>
-    <input type="file" id="bankFile" accept=".csv,.txt" hidden>
-    <button id="export">Експорт JSON</button>
-    <button type="button" id="importBtn">Імпорт JSON</button>
-    <input type="file" id="import" accept=".json" hidden>
-  </div>
-</main>
 
 <div id="login" class="modal" hidden>
   <form class="card box" id="loginForm" style="max-width:360px">
     <h3 style="margin-top:0">Вхід</h3>
     <input id="password" type="password" placeholder="Пароль" autocomplete="current-password" required>
-    <p class="exp" id="loginErr" style="min-height:1.2em;margin:8px 0"></p>
+    <p class="neg" id="loginErr" style="min-height:1.2em;margin:8px 0"></p>
     <button>Увійти</button>
   </form>
 </div>
@@ -308,6 +425,19 @@ $("accFilter").onchange = e => {
   if (accFilter !== "all") $("account").value = accFilter;
   render();
 };
+document.querySelectorAll(".acc").forEach(el => el.onclick = () => {
+  $("accFilter").value = accFilter === el.dataset.acc ? "all" : el.dataset.acc;
+  $("accFilter").onchange({ target: $("accFilter") });
+});
+const hour = new Date().getHours();
+$("greeting").textContent = hour < 5 ? "Доброї ночі" : hour < 12 ? "Доброго ранку" : hour < 18 ? "Доброго дня" : "Доброго вечора";
+// підсвічуємо пункт бокового меню для розділу, який зараз на екрані
+const navLinks = [...document.querySelectorAll(".side a")];
+addEventListener("scroll", () => {
+  let cur = navLinks[0];
+  for (const a of navLinks) { const el = document.querySelector(a.getAttribute("href")); if (el && el.getBoundingClientRect().top < innerHeight / 3) cur = a; }
+  navLinks.forEach(a => a.classList.toggle("on", a === cur));
+}, { passive: true });
 $("prevM").onclick = () => moveMonth(-1);
 $("nextM").onclick = () => moveMonth(1);
 
@@ -326,7 +456,19 @@ function render() {
   $("tInc").textContent = fmt(inc);
   $("tExp").textContent = fmt(exp);
   $("tBal").textContent = fmt(inc - exp);
-  $("tBal").className = inc - exp < 0 ? "exp" : "inc";
+  $("tBal").className = "big" + (inc - exp < 0 ? " neg" : "");
+  // середні витрати за день: для поточного місяця рахуємо лише дні, що минули
+  const daysInMonth = new Date(+m.slice(0, 4), +m.slice(5), 0).getDate();
+  const days = m === today.slice(0, 7) ? +today.slice(8) : m > today ? 1 : daysInMonth;
+  $("tAvg").textContent = fmt(exp / days);
+  $("tCount").textContent = items.length;
+  for (const a of ["priv", "biz"]) {
+    const its = tx.filter(t => accOf(t) === a && t.date.startsWith(m));
+    const bal = its.reduce((s, t) => s + (t.type === "inc" ? t.amount : -t.amount), 0);
+    const el = $(a === "priv" ? "accPriv" : "accBiz");
+    el.textContent = fmt(bal); el.className = bal < 0 ? "neg" : "";
+  }
+  document.querySelectorAll(".acc").forEach(el => el.classList.toggle("on", el.dataset.acc === accFilter));
 
   const byCat = {};
   items.filter(t => t.type === "exp").forEach(t => byCat[t.category] = (byCat[t.category] || 0) + t.amount);
@@ -339,7 +481,7 @@ function render() {
   drawTrend();
 
   $("list").innerHTML = items.length ? items.map(t => `
-    <tr><td>${t.date.slice(8)}.${t.date.slice(5, 7)}</td><td style="white-space:nowrap"><span class="dot" style="background:${catColor(t.category)}"></span>${t.category}</td><td class="muted">${accFilter === "all" && accOf(t) === "biz" ? '<span class="tag">Бізнес</span> ' : ""}${esc(t.note || "")}</td>
+    <tr><td>${t.date.slice(8)}.${t.date.slice(5, 7)}</td><td style="white-space:nowrap"><span class="dot" style="background:${catColor(t.category)}"></span>${t.category}</td><td class="muted note"><div title="${esc(t.note || "")}">${accFilter === "all" && accOf(t) === "biz" ? '<span class="tag">Бізнес</span> ' : ""}${esc(t.note || "")}</div></td>
     <td class="num ${t.type}">${t.type === "exp" ? "−" : "+"}${fmt(t.amount)}</td>
     <td><button class="link" data-id="${t.id}" title="Видалити">✕</button></td></tr>`).join("")
     : `<tr><td class="muted">Операцій за цей місяць немає</td></tr>`;
@@ -397,14 +539,18 @@ function drawTrend() {
       exp: its.filter(t => t.type === "exp").reduce((s, t) => s + t.amount, 0) });
   }
   const max = Math.max(1, ...months.map(m => Math.max(m.inc, m.exp)));
-  const W = 600, H = 220, top = 10, bottom = 24, left = 8, plotH = H - top - bottom;
-  const gw = (W - left * 2) / 6, bw = Math.min(32, gw / 3);
-  let svg = `<line x1="0" x2="${W}" y1="${H - bottom}" y2="${H - bottom}" stroke="var(--line)"/>`;
+  const W = 600, H = 260, top = 10, bottom = 26, left = 8, plotH = H - top - bottom;
+  const gw = (W - left * 2) / 6, bw = Math.min(30, gw / 3);
+  let svg = "";
+  for (let g = 0; g <= 4; g++) {
+    const y = top + plotH * g / 4;
+    svg += `<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)" ${g < 4 ? 'stroke-dasharray="4 6"' : ""}/>`;
+  }
   months.forEach((m, i) => {
     const cx = left + gw * i + gw / 2;
     const hi = m.inc / max * plotH, he = m.exp / max * plotH;
-    svg += `<rect x="${cx - bw - 2}" y="${H - bottom - hi}" width="${bw}" height="${hi}" rx="3" fill="var(--inc)"><title>${m.label}: доходи ${fmt(m.inc)}</title></rect>
-      <rect x="${cx + 2}" y="${H - bottom - he}" width="${bw}" height="${he}" rx="3" fill="var(--exp)"><title>${m.label}: витрати ${fmt(m.exp)}</title></rect>
+    svg += `<rect x="${cx - bw - 2}" y="${H - bottom - hi}" width="${bw}" height="${hi}" rx="8" fill="var(--inc)"><title>${m.label}: доходи ${fmt(m.inc)}</title></rect>
+      <rect x="${cx + 2}" y="${H - bottom - he}" width="${bw}" height="${he}" rx="8" fill="var(--exp)" opacity=".85"><title>${m.label}: витрати ${fmt(m.exp)}</title></rect>
       <text x="${cx}" y="${H - 6}" text-anchor="middle" ${m.key === viewMonth ? 'font-weight="700"' : ""}>${m.label}</text>`;
   });
   $("trend").innerHTML = svg;
